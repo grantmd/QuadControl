@@ -15,11 +15,11 @@ boolean firstContact = false;        // Whether we've heard from the microcontro
 PFont f;
 
 int deltaTime = 0;
-boolean isArmed = false;
+int isArmed = 0;
 
 // Sensor data
-int gyroRoll, gyroPitch, gyroYaw;
-int accelRoll, accelPitch, accelYaw;
+float gyroRoll, gyroPitch, gyroYaw;
+float accelRoll, accelPitch, accelYaw;
 
 // Engine speeds
 int ENGINE_COUNT = 4;
@@ -58,24 +58,32 @@ void draw(){
   // Update sensor data
   textFont(f, 14);
   fill(fgcolor);
-  int firstPosition = 101;
-  textAlign(LEFT);
-  text("Gyro: ", 10, 14);
+  int firstPosition = 116;
+  
   textAlign(RIGHT);
-  text(gyroRoll, firstPosition, 14);
+  text("Roll", firstPosition, 14);
   textAlign(RIGHT);
-  text(gyroPitch, firstPosition+45, 14);
+  text("Pitch", firstPosition+60, 14);
   textAlign(RIGHT);
-  text(gyroYaw, firstPosition+90, 14);
+  text("Yaw", firstPosition+120, 14);
   
   textAlign(LEFT);
-  text("Accel: ", 10, 34);
+  text("Gyro: ", 10, 34);
   textAlign(RIGHT);
-  text(accelRoll, firstPosition, 34);
+  text(gyroRoll, firstPosition, 34);
   textAlign(RIGHT);
-  text(accelPitch, firstPosition+45, 34);
+  text(gyroPitch, firstPosition+60, 34);
+  textAlign(RIGHT);  
+  text(gyroYaw, firstPosition+120, 34);
+  
+  textAlign(LEFT);
+  text("Accel: ", 10, 54);
   textAlign(RIGHT);
-  text(accelYaw, firstPosition+90, 34);
+  text(accelRoll, firstPosition, 54);
+  textAlign(RIGHT);
+  text(accelPitch, firstPosition+60, 54);
+  textAlign(RIGHT);
+  text(accelYaw, firstPosition+120, 54);
   
   // Update engine speeds
   int center = windowWidth/2;
@@ -91,7 +99,7 @@ void draw(){
   // Update stats
   textAlign(RIGHT);
   text("Rate: "+(deltaTime/1000)+"ms", windowWidth-10, 14);
-  if (isArmed){
+  if (isArmed == 1){
     text("Armed: Yes", windowWidth-10, 34);
   }
   else{
@@ -152,9 +160,9 @@ void serialEvent(Serial myPort){
   
   // All done
   if (inByte == 13){
-    int[] data = int(split(new String(serialInArray, 0, serialCount), ','));
+    float[] data = float(split(new String(serialInArray, 0, serialCount), ','));
     
-    deltaTime = data[0];
+    deltaTime = int(data[0]);
     
     gyroRoll = data[1];
     gyroPitch = data[2];
@@ -165,10 +173,10 @@ void serialEvent(Serial myPort){
     accelYaw = data[15];
     
     for (int i=0; i<ENGINE_COUNT; i++){
-      engineSpeeds[0] = data[9+i];
+      engineSpeeds[0] = int(data[9+i]);
     }
     
-    isArmed = boolean(data[16]);
+    isArmed = int(data[16]);
     
     serialCount = 0;
   }
