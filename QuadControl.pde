@@ -13,15 +13,18 @@ char[] serialInArray = new char[128];    // Where we'll put what we receive
 int serialCount = 0;                 // A count of how many bytes we receive
 boolean firstContact = false;        // Whether we've heard from the microcontroller
 PFont f;
+boolean modifyingThrottle = false;
+char[] newThrottle = new char[4];
+int throttleIndex = 0;
 
 int deltaTime = 0;
 int isArmed = 0;
 
 // Sensor data
-float gyroRoll, gyroPitch, gyroYaw;
-float accelRoll, accelPitch, accelYaw;
+float roll, pitch, heading;
 
 // Engine speeds
+int throttle = 0;
 int ENGINE_COUNT = 4;
 int[] engineSpeeds = new int[ENGINE_COUNT];
 
@@ -50,7 +53,7 @@ void setup() {
 void draw(){
   if (!firstContact){
     // Ask for data
-    myPort.write('S');
+    myPort.write('&');
   }
   
   background(bgcolor);
@@ -58,32 +61,21 @@ void draw(){
   // Update sensor data
   textFont(f, 14);
   fill(fgcolor);
-  int firstPosition = 116;
+  int firstPosition = 70;
   
   textAlign(RIGHT);
   text("Roll", firstPosition, 14);
   textAlign(RIGHT);
-  text("Pitch", firstPosition+60, 14);
+  text("Pitch", firstPosition+70, 14);
   textAlign(RIGHT);
-  text("Yaw", firstPosition+120, 14);
+  text("Heading", firstPosition+140, 14);
   
-  textAlign(LEFT);
-  text("Gyro: ", 10, 34);
   textAlign(RIGHT);
-  text(gyroRoll, firstPosition, 34);
+  text(roll, firstPosition, 34);
   textAlign(RIGHT);
-  text(gyroPitch, firstPosition+60, 34);
+  text(pitch, firstPosition+70, 34);
   textAlign(RIGHT);  
-  text(gyroYaw, firstPosition+120, 34);
-  
-  textAlign(LEFT);
-  text("Accel: ", 10, 54);
-  textAlign(RIGHT);
-  text(accelRoll, firstPosition, 54);
-  textAlign(RIGHT);
-  text(accelPitch, firstPosition+60, 54);
-  textAlign(RIGHT);
-  text(accelYaw, firstPosition+120, 54);
+  text(heading, firstPosition+140, 34);
   
   // Update engine speeds
   int center = windowWidth/2;
@@ -95,6 +87,8 @@ void draw(){
   textAlign(RIGHT);
   text(engineSpeeds[1], center+50, 34);
   text(engineSpeeds[3], center+50, 54);
+  textAlign(CENTER);
+  text(throttle, center, 74);
   
   // Update stats
   textAlign(RIGHT);
@@ -125,7 +119,9 @@ void draw(){
   // Draw buttons
   stroke(255);
   strokeWeight(1);
-  if (mouseX >= 10 && mouseX <= 10+buttonWidth && 
+  int xOffset = 10;
+  
+  if (mouseX >= xOffset && mouseX <= xOffset+buttonWidth && 
       mouseY >= windowHeight-40 && mouseY <= windowHeight-40+buttonHeight) {
     fill(210);
     
@@ -134,16 +130,80 @@ void draw(){
       delay(100);
       myPort.write('c');
       delay(100);
-      myPort.write('S');
+      myPort.write('&');
     }
   }
   else{
     fill(buttonColor);
   }
-  rect(10, windowHeight-40, buttonWidth, buttonHeight);
+  rect(xOffset, windowHeight-40, buttonWidth, buttonHeight);
   fill(0);
   textAlign(CENTER);
-  text("Re-Calibrate", 10+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  text("Re-Calibrate", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  
+  //////
+  xOffset += buttonWidth + 10;
+  if (mouseX >= xOffset && mouseX <= xOffset+buttonWidth && 
+      mouseY >= windowHeight-40 && mouseY <= windowHeight-40+buttonHeight) {
+    fill(210);
+    
+    if (mousePressed == true){
+      if (isArmed == 1){
+        myPort.write('4');
+      }
+      else{
+        myPort.write('2');
+      }
+      delay(100);
+      myPort.write('&');
+    }
+  }
+  else{
+    fill(buttonColor);
+  }
+  rect(xOffset, windowHeight-40, buttonWidth, buttonHeight);
+  fill(0);
+  textAlign(CENTER);
+  if (isArmed == 1){
+    text("Disarm", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  }
+  else{
+    text("Arm", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  }
+  
+  //////
+  xOffset += buttonWidth + 10;
+  if (mouseX >= xOffset && mouseX <= xOffset+buttonWidth && 
+      mouseY >= windowHeight-40 && mouseY <= windowHeight-40+buttonHeight) {
+    fill(210);
+    
+    if (mousePressed == true){
+      if (modifyingThrottle == true){
+        sendNewThrottle();
+      }
+      else{
+        modifyingThrottle = true;
+        for (int i=0; i<4; i++){
+          newThrottle[i] = '\0';
+        }
+        throttleIndex = 0;
+        delay(100);
+      }
+    }
+  }
+  else{
+    fill(buttonColor);
+  }
+  rect(xOffset, windowHeight-40, buttonWidth, buttonHeight);
+  fill(0);
+  textAlign(CENTER);
+  if (modifyingThrottle == true){
+    int tmp = int(new String(newThrottle, 0, throttleIndex));
+    text(tmp, xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  }
+  else{
+    text("Set Throttle", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  }
 }
 
 void serialEvent(Serial myPort){
@@ -163,21 +223,39 @@ void serialEvent(Serial myPort){
     float[] data = float(split(new String(serialInArray, 0, serialCount), ','));
     
     deltaTime = int(data[0]);
+        
+    roll = data[1];
+    pitch = data[2];
+    heading = data[3];
     
-    gyroRoll = data[1];
-    gyroPitch = data[2];
-    gyroYaw = data[3];
-    
-    accelRoll = data[13];
-    accelPitch = data[14];
-    accelYaw = data[15];
+    throttle = int(data[4]);
     
     for (int i=0; i<ENGINE_COUNT; i++){
-      engineSpeeds[0] = int(data[9+i]);
+      engineSpeeds[i] = int(data[5+i]);
     }
     
-    isArmed = int(data[16]);
+    isArmed = int(data[9]);
     
     serialCount = 0;
   }
+}
+
+void keyReleased() {
+  if (modifyingThrottle && throttleIndex < 4){
+    if (int(key) == 10){
+      sendNewThrottle();
+    }
+    else{
+      newThrottle[throttleIndex] = key;
+      throttleIndex++;
+    }
+  }
+}
+
+void sendNewThrottle(){
+  String tmp = new String(newThrottle, 0, throttleIndex);
+  myPort.write("$"+tmp);
+  modifyingThrottle = false;
+  delay(100);
+  myPort.write('&');
 }
