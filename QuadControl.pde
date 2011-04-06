@@ -11,7 +11,7 @@ int fgcolor = 255;			     // Fill color
 Serial myPort;                       // The serial port
 char[] serialInArray = new char[128];    // Where we'll put what we receive
 int serialCount = 0;                 // A count of how many bytes we receive
-boolean firstContact = false;        // Whether we've heard from the microcontroller
+int lastData = 0;
 PFont f;
 boolean modifyingThrottle = false;
 char[] newThrottle = new char[4];
@@ -22,6 +22,10 @@ int isArmed = 0;
 
 // Sensor data
 float roll, pitch, heading;
+int historyCount = windowWidth-100;
+float[] pitchHistory = new float[historyCount];
+float[] rollHistory = new float[historyCount];
+int updateCount = 0;
 
 // Engine speeds
 int throttle = 0;
@@ -33,9 +37,19 @@ int buttonColor = 180;
 int buttonWidth = 120;
 int buttonHeight = 30;
 
+// Positions
+int firstPosition = 70;
+int center = windowWidth/2;
+int lineOffset = windowWidth/4;
+int vertCenter = windowHeight/2;
+int lineWidth = 75;
+
+int gaugeCenter = vertCenter - 100;
+int graphCenter = vertCenter + 100;
+
 void setup() {
   size(windowWidth, windowHeight);  // Stage size
-  //noStroke();      // No border on the next thing drawn
+  smooth();
   
   f = loadFont("Monospaced-14.vlw");
 
@@ -51,7 +65,7 @@ void setup() {
 }
 
 void draw(){
-  if (!firstContact){
+  if (millis() - lastData >= 120){
     // Ask for data
     myPort.write('&');
   }
@@ -61,7 +75,6 @@ void draw(){
   // Update sensor data
   textFont(f, 14);
   fill(fgcolor);
-  int firstPosition = 70;
   
   textAlign(RIGHT);
   text("Roll", firstPosition, 14);
@@ -78,43 +91,67 @@ void draw(){
   text(heading, firstPosition+140, 34);
   
   // Update engine speeds
-  int center = windowWidth/2;
   textAlign(CENTER);
   text("Engines", center, 14);
   textAlign(LEFT);
-  text(engineSpeeds[0], center-50, 34);
-  text(engineSpeeds[2], center-50, 54);
+  text(engineSpeeds[0], center-60, 34);
+  text(engineSpeeds[2], center-60, 54);
   textAlign(RIGHT);
-  text(engineSpeeds[1], center+50, 34);
-  text(engineSpeeds[3], center+50, 54);
+  text(engineSpeeds[1], center+60, 34);
+  text(engineSpeeds[3], center+60, 54);
   textAlign(CENTER);
-  text(throttle, center, 74);
+  text(throttle, center, 44);
   
   // Update stats
   textAlign(RIGHT);
-  text("Rate: "+(deltaTime/1000)+"ms", windowWidth-10, 14);
+  text("Last data: "+(millis() - lastData)+"ms", windowWidth-10, 14);
+  text("Rate: "+(deltaTime/1000)+"ms", windowWidth-10, 34);
   if (isArmed == 1){
-    text("Armed: Yes", windowWidth-10, 34);
+    text("Armed: Yes", windowWidth-10, 54);
   }
   else{
-    text("Armed: No", windowWidth-10, 34);
+    text("Armed: No", windowWidth-10, 54);
   }
   
   // Orientation
-  int lineOffset = windowWidth/4;
-  int vertCenter = windowHeight/2;
-  int lineWidth = 75;
+  noStroke();
   
+  pushMatrix();
+  translate(lineOffset, gaugeCenter);
+  rotate(radians(roll));
+  fill(255, 0, 0);
+  rect(-10, -3, 20, 3);
+  rect(-lineWidth, 0, lineWidth*2, 2);
+  popMatrix();
+  
+  pushMatrix();
+  translate(lineOffset*2, gaugeCenter);
+  rotate(radians(pitch));
+  fill(0, 0, 255);
+  rect(-10, -3, 20, 3);
+  rect(-lineWidth, 0, lineWidth*2, 2);
+  popMatrix();
+  
+  pushMatrix();
+  translate(lineOffset*3, gaugeCenter);
+  rotate(radians(heading));
+  fill(fgcolor);
+  rect(-10, -3, 20, 3);
+  rect(-lineWidth, 0, lineWidth*2, 2);
+  popMatrix();
+  
+  // Graph
   strokeWeight(2);
-  line(lineOffset-10, vertCenter-3, lineOffset+10, vertCenter-3);
-  line(lineOffset-lineWidth, vertCenter, lineOffset+lineWidth, vertCenter);
   
-  line((lineOffset*2)-10, vertCenter-3, (lineOffset*2)+10, vertCenter-3);
-  line((lineOffset*2)-lineWidth, vertCenter, (lineOffset*2)+lineWidth, vertCenter);
-  
-  line((lineOffset*3)-10, vertCenter-3, (lineOffset*3)+10, vertCenter-3);
-  line((lineOffset*3)-lineWidth, vertCenter, (lineOffset*3)+lineWidth, vertCenter);
-  
+  int maxPos = min(historyCount, updateCount);
+  if (maxPos > 1){
+    for (int i=0; i<maxPos; i++){
+      stroke(255, 0, 0);
+      point(historyCount+50-i, graphCenter+rollHistory[i]);
+      stroke(0, 0, 255);
+      point(historyCount+50-i, graphCenter+pitchHistory[i]);
+    }
+  }
   
   // Draw buttons
   stroke(255);
@@ -129,8 +166,6 @@ void draw(){
       myPort.write('b');
       delay(100);
       myPort.write('c');
-      delay(100);
-      myPort.write('&');
     }
   }
   else{
@@ -154,8 +189,6 @@ void draw(){
       else{
         myPort.write('2');
       }
-      delay(100);
-      myPort.write('&');
     }
   }
   else{
@@ -207,8 +240,6 @@ void draw(){
 }
 
 void serialEvent(Serial myPort){
-  if (!firstContact) firstContact = true;
-  
   // read a byte from the serial port:
   char inByte = myPort.readChar();
 
@@ -224,7 +255,7 @@ void serialEvent(Serial myPort){
     
     deltaTime = int(data[0]);
         
-    roll = data[1];
+    roll = data[1] * -1;
     pitch = data[2];
     heading = data[3];
     
@@ -236,7 +267,18 @@ void serialEvent(Serial myPort){
     
     isArmed = int(data[9]);
     
+    for (int i=min(historyCount, updateCount)-1; i>0; i--){
+      pitchHistory[i] = pitchHistory[i-1];
+      rollHistory[i] = rollHistory[i-1];
+    }
+    
+    pitchHistory[0] = round(pitch);
+    rollHistory[0] = round(roll);
+    
+    updateCount++;
     serialCount = 0;
+    
+    lastData = millis();
   }
 }
 
@@ -256,6 +298,4 @@ void sendNewThrottle(){
   String tmp = new String(newThrottle, 0, throttleIndex);
   myPort.write("$"+tmp);
   modifyingThrottle = false;
-  delay(100);
-  myPort.write('&');
 }
