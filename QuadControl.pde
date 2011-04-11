@@ -27,6 +27,9 @@ float[] pitchHistory = new float[historyCount];
 float[] rollHistory = new float[historyCount];
 int updateCount = 0;
 
+float rollAvg, rollMin, rollMax;
+float pitchAvg, pitchMin, pitchMax;
+
 // Engine speeds
 int throttle = 0;
 int ENGINE_COUNT = 4;
@@ -141,17 +144,54 @@ void draw(){
   popMatrix();
   
   // Graph
+  rollAvg = 0;
+  rollMin = 0;
+  rollMax = 0;
+  pitchAvg = 0;
+  pitchMin = 0;
+  pitchMax = 0;
+  
   strokeWeight(2);
   
   int maxPos = min(historyCount, updateCount);
   if (maxPos > 1){
     for (int i=0; i<maxPos; i++){
       stroke(255, 0, 0);
-      point(historyCount+50-i, graphCenter+rollHistory[i]);
+      point(historyCount+50-i, round(graphCenter+rollHistory[i]));
       stroke(0, 0, 255);
-      point(historyCount+50-i, graphCenter+pitchHistory[i]);
+      point(historyCount+50-i, round(graphCenter+pitchHistory[i]));
+      
+      rollAvg += rollHistory[i];
+      pitchAvg += pitchHistory[i];
+      
+      if (rollHistory[i] < rollMin) rollMin = rollHistory[i];
+      if (rollHistory[i] > rollMax) rollMax = rollHistory[i];
+      
+      if (pitchHistory[i] < pitchMin) pitchMin = pitchHistory[i];
+      if (pitchHistory[i] > pitchMax) pitchMax = pitchHistory[i];
     }
+    
+    rollAvg = rollAvg/maxPos;
+    pitchAvg = pitchAvg/maxPos;
   }
+  
+  stroke(255);
+  textAlign(LEFT);
+  text("Avg:", 10, windowHeight-100);
+  text("Min:", 10, windowHeight-80);
+  text("Max:", 10, windowHeight-60);
+  
+  fill(255, 0, 0);
+  textAlign(RIGHT);
+  text(rollAvg, 120, windowHeight-100);
+  text(rollMin, 120, windowHeight-80);
+  text(rollMax, 120, windowHeight-60);
+  
+  fill(0, 0, 255);
+  textAlign(RIGHT);
+  text(pitchAvg, 200, windowHeight-100);
+  text(pitchMin, 200, windowHeight-80);
+  text(pitchMax, 200, windowHeight-60);
   
   // Draw buttons
   stroke(255);
@@ -163,6 +203,8 @@ void draw(){
     fill(210);
     
     if (mousePressed == true){
+      myPort.write("X");
+      myPort.clear();
       myPort.write('b');
       delay(100);
       myPort.write('c');
@@ -183,8 +225,10 @@ void draw(){
     fill(210);
     
     if (mousePressed == true){
+      myPort.write("X");
+      myPort.clear();
       if (isArmed == 1){
-        myPort.write('4');
+        sendDisarm();
       }
       else{
         myPort.write('2');
@@ -272,8 +316,8 @@ void serialEvent(Serial myPort){
       rollHistory[i] = rollHistory[i-1];
     }
     
-    pitchHistory[0] = round(pitch);
-    rollHistory[0] = round(roll);
+    pitchHistory[0] = pitch;
+    rollHistory[0] = roll;
     
     updateCount++;
     serialCount = 0;
@@ -282,8 +326,29 @@ void serialEvent(Serial myPort){
   }
 }
 
-void keyReleased() {
-  if (modifyingThrottle && throttleIndex < 4){
+void keyReleased(){
+  if (key == CODED){
+    if (keyCode == UP){
+      int tmp = throttle+10;
+      myPort.write("$"+tmp+";&");
+    }
+    else if (keyCode == DOWN){
+      int tmp = throttle-10;
+      myPort.write("$"+tmp+";&");
+    }
+    else if (keyCode == LEFT){
+      println("LEFT");
+    }
+    else if (keyCode == RIGHT){
+      println("RIGHT");
+    }
+  }
+  else if (isArmed == 1 && key == 's'){
+    myPort.write("X");
+    myPort.clear();
+    sendDisarm();
+  }
+  else if (modifyingThrottle && throttleIndex < 4){
     if (int(key) == 10){
       sendNewThrottle();
     }
@@ -296,6 +361,12 @@ void keyReleased() {
 
 void sendNewThrottle(){
   String tmp = new String(newThrottle, 0, throttleIndex);
-  myPort.write("$"+tmp);
+  myPort.write("X");
+  myPort.clear();
+  myPort.write("$"+tmp+";&");
   modifyingThrottle = false;
+}
+
+void sendDisarm(){
+  myPort.write('4');
 }
