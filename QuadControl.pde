@@ -8,11 +8,14 @@ int windowWidth = 1024;
 int windowHeight = 640;
 int bgcolor = 0;			     // Background color
 int fgcolor = 255;			     // Fill color
+PFont f;
+
 Serial myPort;                       // The serial port
+PrintWriter output;
 char[] serialInArray = new char[128];    // Where we'll put what we receive
 int serialCount = 0;                 // A count of how many bytes we receive
 int lastData = 0;
-PFont f;
+
 boolean modifyingThrottle = false;
 char[] newThrottle = new char[4];
 int throttleIndex = 0;
@@ -55,6 +58,8 @@ void setup() {
   smooth();
   
   f = loadFont("Monospaced-14.vlw");
+  
+  output = createWriter(day()+"-"+month()+"-"+year()+"_"+hour()+"-"+minute()+"-"+second()+".txt"); 
 
   // Print a list of the serial ports, for debugging purposes:
   //println(Serial.list());
@@ -318,6 +323,8 @@ void serialEvent(Serial myPort){
     
     pitchHistory[0] = pitch;
     rollHistory[0] = roll;
+    
+    output.println(data);
     
     updateCount++;
     serialCount = 0;
