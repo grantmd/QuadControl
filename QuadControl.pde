@@ -12,7 +12,7 @@ PFont f;
 
 Serial myPort;                       // The serial port
 PrintWriter output;
-char[] serialInArray = new char[128];    // Where we'll put what we receive
+char[] serialInArray = new char[1024];    // Where we'll put what we receive
 int serialCount = 0;                 // A count of how many bytes we receive
 int lastData = 0;
 
@@ -24,7 +24,7 @@ int deltaTime = 0;
 int isArmed = 0;
 
 // Sensor data
-float roll, pitch, heading;
+float roll, pitch, heading, aRoll, aPitch, aYaw, gRoll, gPitch, gYaw;
 int historyCount = windowWidth-100;
 float[] pitchHistory = new float[historyCount];
 float[] rollHistory = new float[historyCount];
@@ -97,6 +97,20 @@ void draw(){
   text(pitch, firstPosition+70, 34);
   textAlign(RIGHT);  
   text(heading, firstPosition+140, 34);
+  
+  textAlign(RIGHT);
+  text(aRoll, firstPosition, 54);
+  textAlign(RIGHT);
+  text(aPitch, firstPosition+70, 54);
+  textAlign(RIGHT);  
+  text(aYaw, firstPosition+140, 54);
+  
+  textAlign(RIGHT);
+  text(gRoll, firstPosition, 74);
+  textAlign(RIGHT);
+  text(gPitch, firstPosition+70, 74);
+  textAlign(RIGHT);  
+  text(gYaw, firstPosition+140, 74);
   
   // Update engine speeds
   textAlign(CENTER);
@@ -308,13 +322,21 @@ void serialEvent(Serial myPort){
     pitch = data[2];
     heading = data[3];
     
-    throttle = int(data[4]);
+    aRoll = data[4];
+    aPitch = data[5];
+    aYaw = data[6];
+    
+    gRoll = data[7];
+    gPitch = data[8];
+    gYaw = data[9];
+    
+    throttle = int(data[10]);
     
     for (int i=0; i<ENGINE_COUNT; i++){
-      engineSpeeds[i] = int(data[5+i]);
+      engineSpeeds[i] = int(data[11+i]);
     }
     
-    isArmed = int(data[9]);
+    isArmed = int(data[15]);
     
     for (int i=min(historyCount, updateCount)-1; i>0; i--){
       pitchHistory[i] = pitchHistory[i-1];
@@ -324,7 +346,7 @@ void serialEvent(Serial myPort){
     pitchHistory[0] = pitch;
     rollHistory[0] = roll;
     
-    output.println(data);
+    output.println(new String(serialInArray, 0, serialCount));
     
     updateCount++;
     serialCount = 0;
