@@ -15,6 +15,7 @@ PrintWriter output;
 char[] serialInArray = new char[1024];    // Where we'll put what we receive
 int serialCount = 0;                 // A count of how many bytes we receive
 int lastData = 0;
+int readMode = 1;
 
 boolean modifyingThrottle = false;
 char[] newThrottle = new char[4];
@@ -22,21 +23,28 @@ int throttleIndex = 0;
 
 int deltaTime = 0;
 int isArmed = 0;
+int systemMode = 0;
 
 // Sensor data
 float roll, pitch, heading, aRoll, aPitch, aYaw, gRoll, gPitch, gYaw;
 int historyCount = windowWidth-100;
 float[] pitchHistory = new float[historyCount];
 float[] rollHistory = new float[historyCount];
+float[] headingHistory = new float[historyCount];
 int updateCount = 0;
 
 float rollAvg, rollMin, rollMax;
 float pitchAvg, pitchMin, pitchMax;
+float headingAvg, headingMin, headingMax;
 
 // Engine speeds
 int throttle = 0;
 int ENGINE_COUNT = 4;
 int[] engineSpeeds = new int[ENGINE_COUNT];
+
+// PIDs
+float[] levelRollPID = new float[3];
+float[] levelPitchPID = new float[3];
 
 // Buttons
 int buttonColor = 180;
@@ -59,7 +67,7 @@ void setup() {
   
   f = loadFont("Monospaced-14.vlw");
   
-  output = createWriter(day()+"-"+month()+"-"+year()+"_"+hour()+"-"+minute()+"-"+second()+".txt"); 
+  output = createWriter(day()+"-"+month()+"-"+year()+"_"+hour()+"-"+minute()+"-"+second()+".csv"); 
 
   // Print a list of the serial ports, for debugging purposes:
   //println(Serial.list());
@@ -75,7 +83,12 @@ void setup() {
 void draw(){
   if (millis() - lastData >= 120){
     // Ask for data
-    myPort.write('&');
+    if (readMode == 1){
+      myPort.write('F');
+    }
+    else{
+      myPort.write('&');
+    }
   }
   
   background(bgcolor);
@@ -128,12 +141,6 @@ void draw(){
   textAlign(RIGHT);
   text("Last data: "+(millis() - lastData)+"ms", windowWidth-10, 14);
   text("Rate: "+(deltaTime/1000)+"ms", windowWidth-10, 34);
-  if (isArmed == 1){
-    text("Armed: Yes", windowWidth-10, 54);
-  }
-  else{
-    text("Armed: No", windowWidth-10, 54);
-  }
   
   // Orientation
   noStroke();
@@ -169,6 +176,9 @@ void draw(){
   pitchAvg = 0;
   pitchMin = 0;
   pitchMax = 0;
+  headingAvg = 0;
+  headingMin = 0;
+  headingMax = 0;
   
   strokeWeight(2);
   
@@ -179,19 +189,26 @@ void draw(){
       point(historyCount+50-i, round(graphCenter+rollHistory[i]));
       stroke(0, 0, 255);
       point(historyCount+50-i, round(graphCenter+pitchHistory[i]));
+      stroke(255);
+      point(historyCount+50-i, round(graphCenter+headingHistory[i]));
       
       rollAvg += rollHistory[i];
       pitchAvg += pitchHistory[i];
+      headingAvg += headingHistory[i];
       
       if (rollHistory[i] < rollMin) rollMin = rollHistory[i];
       if (rollHistory[i] > rollMax) rollMax = rollHistory[i];
       
       if (pitchHistory[i] < pitchMin) pitchMin = pitchHistory[i];
       if (pitchHistory[i] > pitchMax) pitchMax = pitchHistory[i];
+      
+      if (headingHistory[i] < headingMin) headingMin = headingHistory[i];
+      if (headingHistory[i] > headingMax) headingMax = headingHistory[i];
     }
     
     rollAvg = rollAvg/maxPos;
     pitchAvg = pitchAvg/maxPos;
+    headingAvg = headingAvg/maxPos;
   }
   
   stroke(255);
@@ -211,6 +228,32 @@ void draw(){
   text(pitchAvg, 200, windowHeight-100);
   text(pitchMin, 200, windowHeight-80);
   text(pitchMax, 200, windowHeight-60);
+  
+  fill(255);
+  textAlign(RIGHT);
+  text(headingAvg, 280, windowHeight-100);
+  text(headingMin, 280, windowHeight-80);
+  text(headingMax, 280, windowHeight-60);
+  
+  ///////////
+  
+  stroke(255);
+  textAlign(LEFT);
+  text("P", windowWidth-170, windowHeight-100);
+  text("I", windowWidth-110, windowHeight-100);
+  text("D", windowWidth-50, windowHeight-100);
+ 
+  fill(255, 0, 0);
+  textAlign(RIGHT);
+  text(levelRollPID[0], windowWidth-130, windowHeight-80);
+  text(levelRollPID[1], windowWidth-70, windowHeight-80);
+  text(levelRollPID[2], windowWidth-10, windowHeight-80);
+  
+  fill(0, 0, 255);
+  textAlign(RIGHT);
+  text(levelPitchPID[0], windowWidth-130, windowHeight-60);
+  text(levelPitchPID[1], windowWidth-70, windowHeight-60);
+  text(levelPitchPID[2], windowWidth-10, windowHeight-60);
   
   // Draw buttons
   stroke(255);
@@ -250,8 +293,9 @@ void draw(){
         sendDisarm();
       }
       else{
-        myPort.write('2');
+        sendArm();
       }
+      delay(100);
     }
   }
   else{
@@ -300,6 +344,40 @@ void draw(){
   else{
     text("Set Throttle", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
   }
+  
+  //////
+  xOffset += buttonWidth + 10;
+  if (mouseX >= xOffset && mouseX <= xOffset+buttonWidth && 
+      mouseY >= windowHeight-40 && mouseY <= windowHeight-40+buttonHeight) {
+    fill(210);
+    
+    if (mousePressed == true){
+      if (systemMode == 0){
+        sendMode(1);
+        systemMode = 1;
+      }
+      else{
+        sendMode(0);
+        systemMode = 0;
+      }
+      delay(100);
+    }
+  }
+  else{
+    fill(buttonColor);
+  }
+  rect(xOffset, windowHeight-40, buttonWidth, buttonHeight);
+  fill(0);
+  textAlign(CENTER);
+  if (systemMode == 1){
+    text("AUTO", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  }
+  else if (systemMode == 2){
+    text("AUTO (PID)", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  }
+  else{
+    text("MANUAL", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  }
 }
 
 void serialEvent(Serial myPort){
@@ -316,37 +394,60 @@ void serialEvent(Serial myPort){
   if (inByte == 13){
     float[] data = float(split(new String(serialInArray, 0, serialCount), ','));
     
-    deltaTime = int(data[0]);
-        
-    roll = data[1] * -1;
-    pitch = data[2];
-    heading = data[3];
+    //println("Length: "+data.length);
+    //println("Read mode: "+readMode);
+    //println(new String(serialInArray, 0, serialCount));
     
-    aRoll = data[4];
-    aPitch = data[5];
-    aYaw = data[6];
-    
-    gRoll = data[7];
-    gPitch = data[8];
-    gYaw = data[9];
-    
-    throttle = int(data[10]);
-    
-    for (int i=0; i<ENGINE_COUNT; i++){
-      engineSpeeds[i] = int(data[11+i]);
+    if (readMode == 0 && data.length == 17){
+      
+      deltaTime = int(data[0]);
+          
+      roll = data[1] * -1;
+      pitch = data[2];
+      heading = data[3];
+      
+      aRoll = data[4];
+      aPitch = data[5];
+      aYaw = data[6];
+      
+      gRoll = data[7];
+      gPitch = data[8];
+      gYaw = data[9];
+      
+      throttle = int(data[10]);
+      
+      for (int i=0; i<ENGINE_COUNT; i++){
+        engineSpeeds[i] = int(data[11+i]);
+      }
+      
+      isArmed = int(data[15]);
+      systemMode = int(data[16]);
+      
+      for (int i=min(historyCount, updateCount)-1; i>0; i--){
+        pitchHistory[i] = pitchHistory[i-1];
+        rollHistory[i] = rollHistory[i-1];
+        headingHistory[i] = headingHistory[i-1];
+      }
+      
+      pitchHistory[0] = pitch;
+      rollHistory[0] = roll;
+      headingHistory[0] = heading;
+      
+      output.println(new String(serialInArray, 0, serialCount));
     }
-    
-    isArmed = int(data[15]);
-    
-    for (int i=min(historyCount, updateCount)-1; i>0; i--){
-      pitchHistory[i] = pitchHistory[i-1];
-      rollHistory[i] = rollHistory[i-1];
+    else if (readMode == 1 && data.length == 7){
+      
+      levelRollPID[0] = data[0];
+      levelRollPID[1] = data[1];
+      levelRollPID[2] = data[2];
+      
+      levelPitchPID[0] = data[3];
+      levelPitchPID[1] = data[4];
+      levelPitchPID[2] = data[5];
+      
+      readMode = 0;
+      myPort.write('&');
     }
-    
-    pitchHistory[0] = pitch;
-    rollHistory[0] = roll;
-    
-    output.println(new String(serialInArray, 0, serialCount));
     
     updateCount++;
     serialCount = 0;
@@ -358,24 +459,55 @@ void serialEvent(Serial myPort){
 void keyReleased(){
   if (key == CODED){
     if (keyCode == UP){
-      int tmp = throttle+10;
-      myPort.write("$"+tmp+";&");
+      if (systemMode == 0){
+        int tmp = throttle+10;
+        myPort.write("$"+tmp+";&");
+      }
+      else{
+        levelRollPID[0] += 0.5;
+        levelPitchPID[0] += 0.5;
+        sendRollPitchPID();
+      }
     }
     else if (keyCode == DOWN){
-      int tmp = throttle-10;
-      myPort.write("$"+tmp+";&");
+      if (systemMode == 0){
+        int tmp = throttle-10;
+        myPort.write("$"+tmp+";&");
+      }
+      else{
+        levelRollPID[0] -= 0.5;
+        levelPitchPID[0] -= 0.5;
+        sendRollPitchPID();
+      }
     }
     else if (keyCode == LEFT){
-      println("LEFT");
+      if (systemMode == 2){
+        levelRollPID[2] -= 0.5;
+        levelPitchPID[2] -= 0.5;
+        sendRollPitchPID();
+      }
     }
     else if (keyCode == RIGHT){
-      println("RIGHT");
+      if (systemMode == 2){
+        levelRollPID[2] += 0.5;
+        levelPitchPID[2] += 0.5;
+        sendRollPitchPID();
+      }
     }
   }
   else if (isArmed == 1 && key == 's'){
     myPort.write("X");
     myPort.clear();
     sendDisarm();
+  }
+  else if (isArmed == 0 && key == 's'){
+    myPort.write("X");
+    myPort.clear();
+    sendArm();
+  }
+  else if (systemMode == 1 && key == 'p'){
+    sendMode(2);
+    systemMode = 2;
   }
   else if (modifyingThrottle && throttleIndex < 4){
     if (int(key) == 10){
@@ -398,4 +530,25 @@ void sendNewThrottle(){
 
 void sendDisarm(){
   myPort.write('4');
+}
+
+void sendArm(){
+  myPort.write('2');
+}
+
+void sendMode(int mode){
+  myPort.write("X");
+  myPort.clear();
+  myPort.write("S"+mode+";&");
+}
+
+void sendRollPitchPID(){
+  myPort.write("X");
+  myPort.clear();
+  myPort.write("E");
+  
+  for (int i=0; i<3; i++) myPort.write(levelRollPID[i]+";");
+  for (int i=0; i<3; i++) myPort.write(levelPitchPID[i]+";");
+  
+  myPort.write("&");
 }
