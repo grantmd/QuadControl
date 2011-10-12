@@ -25,6 +25,7 @@ int deltaTime = 0;
 int isArmed = 0;
 int systemMode = 0;
 int altHold = 0;
+int flightMode = 0;
 
 // Sensor data
 float roll, pitch, heading, aRoll, aPitch, aYaw, gRoll, gPitch, gYaw;
@@ -49,6 +50,9 @@ int[] engineSpeeds = new int[ENGINE_COUNT];
 // PIDs
 float[] levelRollPID = new float[3];
 float[] levelPitchPID = new float[3];
+float[] gyroRollPID = new float[3];
+float[] gyroPitchPID = new float[3];
+float windupGuard;
 
 // Buttons
 int buttonColor = 180;
@@ -91,7 +95,7 @@ void draw(){
       myPort.write('F');
     }
     else{
-      myPort.write('&');
+      myPort.write('Q');
     }
   }
   
@@ -251,15 +255,27 @@ void draw(){
  
   fill(255, 0, 0);
   textAlign(RIGHT);
-  text(levelRollPID[0], windowWidth-130, windowHeight-80);
-  text(levelRollPID[1], windowWidth-70, windowHeight-80);
+  text(levelRollPID[0], windowWidth-150, windowHeight-80);
+  text(levelRollPID[1], windowWidth-80, windowHeight-80);
   text(levelRollPID[2], windowWidth-10, windowHeight-80);
   
   fill(0, 0, 255);
   textAlign(RIGHT);
-  text(levelPitchPID[0], windowWidth-130, windowHeight-60);
-  text(levelPitchPID[1], windowWidth-70, windowHeight-60);
+  text(levelPitchPID[0], windowWidth-150, windowHeight-60);
+  text(levelPitchPID[1], windowWidth-80, windowHeight-60);
   text(levelPitchPID[2], windowWidth-10, windowHeight-60);
+  
+  fill(255, 0, 0);
+  textAlign(RIGHT);
+  text(gyroRollPID[0], windowWidth-150, windowHeight-40);
+  text(gyroRollPID[1], windowWidth-80, windowHeight-40);
+  text(gyroRollPID[2], windowWidth-10, windowHeight-40);
+  
+  fill(0, 0, 255);
+  textAlign(RIGHT);
+  text(gyroPitchPID[0], windowWidth-150, windowHeight-20);
+  text(gyroPitchPID[1], windowWidth-80, windowHeight-20);
+  text(gyroPitchPID[2], windowWidth-10, windowHeight-20);
   
   // Draw buttons
   stroke(255);
@@ -433,34 +449,28 @@ void serialEvent(Serial myPort){
   if (inByte == 13){
     float[] data = float(split(new String(serialInArray, 0, serialCount), ','));
     
-    println("Length: "+data.length);
-    println("Read mode: "+readMode);
-    println(new String(serialInArray, 0, serialCount));
+    //println("Length: "+data.length);
+    //println("Read mode: "+readMode);
+    //println(new String(serialInArray, 0, serialCount));
     
-    if (readMode == 0 && data.length == 17){
+    if (readMode == 0 && data.length == 12){
+      // This is 'Q': sensor data
       
-      deltaTime = int(data[0]);
-          
-      roll = data[1] * -1;
-      pitch = data[2];
-      heading = data[3];
+      gRoll = data[0];
+      gPitch = data[1];
+      gYaw = data[2];
       
-      aRoll = data[4];
-      aPitch = data[5];
-      aYaw = data[6];
+      aRoll = data[3];
+      aPitch = data[4];
+      aYaw = data[5];
       
-      gRoll = data[7];
-      gPitch = data[8];
-      gYaw = data[9];
-      
-      throttle = int(data[10]);
-      
-      for (int i=0; i<ENGINE_COUNT; i++){
-        engineSpeeds[i] = int(data[11+i]);
-      }
-      
-      isArmed = int(data[15]);
-      systemMode = int(data[16]);
+      /*cRoll = data[6];
+      cPitch = data[7];
+      cYaw = data[8];*/
+            
+      roll = data[9];
+      pitch = data[10];
+      heading = data[11];
       
       for (int i=min(historyCount, updateCount)-1; i>0; i--){
         pitchHistory[i] = pitchHistory[i-1];
@@ -473,8 +483,44 @@ void serialEvent(Serial myPort){
       headingHistory[0] = heading;
       
       output.println(new String(serialInArray, 0, serialCount));
+      
+      myPort.write('S');
+      //myPort.write('X');
     }
-    else if (readMode == 1 && data.length == 7){
+    else if (readMode == 0 && data.length == 17){
+      // This is 'S': all flight data
+      
+      deltaTime = int(data[0]);
+      
+      /*gRoll = data[1];
+      gPitch = data[2];
+      gYaw = data[3];
+      
+      aRoll = data[4];
+      aPitch = data[5];
+      aYaw = data[6];*/
+      
+      voltage = data[7];
+      
+      for (int i=0; i<ENGINE_COUNT; i++){
+        engineSpeeds[i] = int(data[8+i]);
+      }
+      
+      isArmed = int(data[12]);
+      flightMode = int(data[13]);
+      
+      heading = data[14];
+      
+      altitude = data[15];
+      altHold = int(data[16]);
+      
+      output.println(new String(serialInArray, 0, serialCount));
+      
+      myPort.write('Q');
+      //myPort.write('X');
+    }
+    else if (readMode == 1 && data.length == 13){
+      // This is 'F', reading PIDs
       
       levelRollPID[0] = data[0];
       levelRollPID[1] = data[1];
@@ -484,8 +530,19 @@ void serialEvent(Serial myPort){
       levelPitchPID[1] = data[4];
       levelPitchPID[2] = data[5];
       
+      gyroRollPID[0] = data[6];
+      gyroRollPID[1] = data[7];
+      gyroRollPID[2] = data[8];
+      
+      gyroPitchPID[0] = data[9];
+      gyroPitchPID[1] = data[10];
+      gyroPitchPID[2] = data[11];
+      
+      windupGuard = data[11];
+      
       readMode = 0;
-      myPort.write('&');
+      myPort.write('Q');
+      //myPort.write('X');
     }
     
     updateCount++;
@@ -500,7 +557,7 @@ void keyReleased(){
     if (keyCode == UP){
       if (systemMode == 0){
         int tmp = throttle+10;
-        myPort.write("$"+tmp+";&");
+        myPort.write("$"+tmp+";Q");
       }
       else{
         levelRollPID[0] += 0.5;
@@ -511,7 +568,7 @@ void keyReleased(){
     else if (keyCode == DOWN){
       if (systemMode == 0){
         int tmp = throttle-10;
-        myPort.write("$"+tmp+";&");
+        myPort.write("$"+tmp+";Q");
       }
       else{
         levelRollPID[0] -= 0.5;
@@ -563,7 +620,7 @@ void sendNewThrottle(){
   String tmp = new String(newThrottle, 0, throttleIndex);
   myPort.write("X");
   myPort.clear();
-  myPort.write("$"+tmp+";&");
+  myPort.write("$"+tmp+";Q");
   modifyingThrottle = false;
 }
 
@@ -578,13 +635,13 @@ void sendArm(){
 void sendMode(int mode){
   myPort.write("X");
   myPort.clear();
-  myPort.write("S"+mode+";&");
+  myPort.write("S"+mode+";Q");
 }
 
 void sendAltHold(int mode){
   myPort.write("X");
   myPort.clear();
-  myPort.write("S"+mode+";&");
+  myPort.write("S"+mode+";Q");
 }
 
 void sendRollPitchPID(){
@@ -595,5 +652,5 @@ void sendRollPitchPID(){
   for (int i=0; i<3; i++) myPort.write(levelRollPID[i]+";");
   for (int i=0; i<3; i++) myPort.write(levelPitchPID[i]+";");
   
-  myPort.write("&");
+  myPort.write("Q");
 }
