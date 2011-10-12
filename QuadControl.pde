@@ -15,7 +15,7 @@ PrintWriter output;
 char[] serialInArray = new char[1024];    // Where we'll put what we receive
 int serialCount = 0;                 // A count of how many bytes we receive
 int lastData = 0;
-int readMode = 1;
+int readMode = 1; // 0: Sensor data, 1: PIDs
 
 boolean modifyingThrottle = false;
 char[] newThrottle = new char[4];
@@ -24,6 +24,7 @@ int throttleIndex = 0;
 int deltaTime = 0;
 int isArmed = 0;
 int systemMode = 0;
+int altHold = 0;
 
 // Sensor data
 float roll, pitch, heading, aRoll, aPitch, aYaw, gRoll, gPitch, gYaw;
@@ -36,6 +37,9 @@ int updateCount = 0;
 float rollAvg, rollMin, rollMax;
 float pitchAvg, pitchMin, pitchMax;
 float headingAvg, headingMin, headingMax;
+
+float altitude;
+float voltage;
 
 // Engine speeds
 int throttle = 0;
@@ -141,6 +145,8 @@ void draw(){
   textAlign(RIGHT);
   text("Last data: "+(millis() - lastData)+"ms", windowWidth-10, 14);
   text("Rate: "+(deltaTime/1000)+"ms", windowWidth-10, 34);
+  text("Power: "+(voltage)+"v", windowWidth-10, 54);
+  text("Altitude: "+(altitude)+"m", windowWidth-10, 74);
   
   // Orientation
   noStroke();
@@ -270,6 +276,8 @@ void draw(){
       myPort.write('b');
       delay(100);
       myPort.write('c');
+      delay(100);
+      myPort.write('f');
     }
   }
   else{
@@ -378,6 +386,37 @@ void draw(){
   else{
     text("MANUAL", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
   }
+  
+  //////
+  xOffset += buttonWidth + 10;
+  if (mouseX >= xOffset && mouseX <= xOffset+buttonWidth && 
+      mouseY >= windowHeight-40 && mouseY <= windowHeight-40+buttonHeight) {
+    fill(210);
+    
+    if (mousePressed == true){
+      if (altHold == 0){
+        sendAltHold(1);
+        altHold = 1;
+      }
+      else{
+        sendAltHold(0);
+        altHold = 0;
+      }
+      delay(100);
+    }
+  }
+  else{
+    fill(buttonColor);
+  }
+  rect(xOffset, windowHeight-40, buttonWidth, buttonHeight);
+  fill(0);
+  textAlign(CENTER);
+  if (altHold == 1){
+    text("ALT HOLD: On", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  }
+  else{
+    text("ALT HOLD: Off", xOffset+(buttonWidth/2), windowHeight-40+(buttonHeight/2)+5);
+  }
 }
 
 void serialEvent(Serial myPort){
@@ -394,9 +433,9 @@ void serialEvent(Serial myPort){
   if (inByte == 13){
     float[] data = float(split(new String(serialInArray, 0, serialCount), ','));
     
-    //println("Length: "+data.length);
-    //println("Read mode: "+readMode);
-    //println(new String(serialInArray, 0, serialCount));
+    println("Length: "+data.length);
+    println("Read mode: "+readMode);
+    println(new String(serialInArray, 0, serialCount));
     
     if (readMode == 0 && data.length == 17){
       
@@ -537,6 +576,12 @@ void sendArm(){
 }
 
 void sendMode(int mode){
+  myPort.write("X");
+  myPort.clear();
+  myPort.write("S"+mode+";&");
+}
+
+void sendAltHold(int mode){
   myPort.write("X");
   myPort.clear();
   myPort.write("S"+mode+";&");
