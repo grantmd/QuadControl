@@ -33,11 +33,13 @@ int historyCount = windowWidth-100;
 float[] pitchHistory = new float[historyCount];
 float[] rollHistory = new float[historyCount];
 float[] headingHistory = new float[historyCount];
+float[] altitudeHistory = new float[historyCount];
 int updateCount = 0;
 
 float rollAvg, rollMin, rollMax;
 float pitchAvg, pitchMin, pitchMax;
 float headingAvg, headingMin, headingMax;
+float altitudeAvg, altitudeMin, altitudeMax;
 
 float altitude;
 float voltage;
@@ -78,24 +80,33 @@ void setup() {
   output = createWriter(day()+"-"+month()+"-"+year()+"_"+hour()+"-"+minute()+"-"+second()+".csv"); 
 
   // Print a list of the serial ports, for debugging purposes:
-  //println(Serial.list());
+  println(Serial.list());
 
   // I know that the first port in the serial list on my mac
   // is always my  FTDI adaptor, so I open Serial.list()[0].
   // On Windows machines, this generally opens COM1.
   // Open whatever port is the one you're using.
-  String portName = Serial.list()[0];
+  String portName = Serial.list()[1];
   myPort = new Serial(this, portName, 115200);
+  myPort.write('X');
+  
 }
 
 void draw(){
-  if (millis() - lastData >= 120){
+  //int available = myPort.available();
+  //if (available != 0) println("Available: "+available);
+  
+  if (millis() - lastData >= 1200){
     // Ask for data
     if (readMode == 1){
+      println("Asking for PID data");
       myPort.write('F');
+      //delay(1000);
     }
     else{
-      myPort.write('Q');
+      println("Asking for sensor");
+      myPort.write('&');
+      //delay(1000);
     }
   }
   
@@ -138,10 +149,10 @@ void draw(){
   text("Engines", center, 14);
   textAlign(LEFT);
   text(engineSpeeds[0], center-60, 34);
-  text(engineSpeeds[2], center-60, 54);
+  text(engineSpeeds[3], center-60, 54);
   textAlign(RIGHT);
-  text(engineSpeeds[1], center+60, 34);
-  text(engineSpeeds[3], center+60, 54);
+  text(engineSpeeds[2], center+60, 34);
+  text(engineSpeeds[1], center+60, 54);
   textAlign(CENTER);
   text(throttle, center, 44);
   
@@ -189,6 +200,9 @@ void draw(){
   headingAvg = 0;
   headingMin = 0;
   headingMax = 0;
+  altitudeAvg = 0;
+  altitudeMin = 0;
+  altitudeMax = 0;
   
   strokeWeight(2);
   
@@ -201,10 +215,13 @@ void draw(){
       point(historyCount+50-i, round(graphCenter+pitchHistory[i]));
       stroke(255);
       point(historyCount+50-i, round(graphCenter+headingHistory[i]));
+      stroke(0, 255, 0);
+      point(historyCount+50-i, round(graphCenter+altitudeHistory[i]));
       
       rollAvg += rollHistory[i];
       pitchAvg += pitchHistory[i];
       headingAvg += headingHistory[i];
+      altitudeAvg += altitudeHistory[i];
       
       if (rollHistory[i] < rollMin) rollMin = rollHistory[i];
       if (rollHistory[i] > rollMax) rollMax = rollHistory[i];
@@ -214,11 +231,15 @@ void draw(){
       
       if (headingHistory[i] < headingMin) headingMin = headingHistory[i];
       if (headingHistory[i] > headingMax) headingMax = headingHistory[i];
+      
+      if (altitudeHistory[i] < altitudeMin) altitudeMin = altitudeHistory[i];
+      if (altitudeHistory[i] > altitudeMax) altitudeMax = altitudeHistory[i];
     }
     
     rollAvg = rollAvg/maxPos;
     pitchAvg = pitchAvg/maxPos;
     headingAvg = headingAvg/maxPos;
+    altitudeAvg = altitudeAvg/maxPos;
   }
   
   stroke(255);
@@ -245,9 +266,16 @@ void draw(){
   text(headingMin, 280, windowHeight-80);
   text(headingMax, 280, windowHeight-60);
   
+  fill(0, 255, 0);
+  textAlign(RIGHT);
+  text(altitudeAvg, 360, windowHeight-100);
+  text(altitudeMin, 360, windowHeight-80);
+  text(altitudeMax, 360, windowHeight-60);
+  
   ///////////
   
   stroke(255);
+  fill(255);
   textAlign(LEFT);
   text("P", windowWidth-170, windowHeight-100);
   text("I", windowWidth-110, windowHeight-100);
@@ -435,89 +463,79 @@ void draw(){
   }
 }
 
-void serialEvent(Serial myPort){
+void serialEvent(Serial p){
   // read a byte from the serial port:
-  char inByte = myPort.readChar();
+  char inByte = p.readChar();
+  //println("inByte: "+inByte);
 
   // Add the latest byte from the serial port to array:
-  if (inByte != 10){
+  if (inByte != 10){ // LF
     serialInArray[serialCount] = inByte;
     serialCount++;
   }
   
   // All done
-  if (inByte == 13){
+  if (inByte == 13){ // CR
     float[] data = float(split(new String(serialInArray, 0, serialCount), ','));
     
     //println("Length: "+data.length);
     //println("Read mode: "+readMode);
     //println(new String(serialInArray, 0, serialCount));
     
-    if (readMode == 0 && data.length == 12){
-      // This is 'Q': sensor data
-      
-      gRoll = data[0];
-      gPitch = data[1];
-      gYaw = data[2];
-      
-      aRoll = data[3];
-      aPitch = data[4];
-      aYaw = data[5];
-      
-      /*cRoll = data[6];
-      cPitch = data[7];
-      cYaw = data[8];*/
+    if (readMode == 0 && data.length == 23){
+      // This is '&', flight and sensor data
+      deltaTime = int(data[0]);
             
-      roll = data[9];
-      pitch = data[10];
-      heading = data[11];
+      roll = data[1];
+      pitch = data[2];
+      heading = data[3];
+      
+      aRoll = data[4];
+      aPitch = data[5];
+      aYaw = data[6];
+      
+      gRoll = data[7];
+      gPitch = data[8];
+      gYaw = data[9];
+      
+      /*
+      // Compass
+      cRoll = data[10];
+      cPitch = data[11];
+      cYaw = data[12];*/
+      
+      altitude = data[13];
+      altHold = int(data[14]);
+      voltage = data[15];
+      
+      throttle = int(data[16]);
+      
+      for (int i=0; i<ENGINE_COUNT; i++){
+        engineSpeeds[i] = int(data[17+i]);
+      }
+      
+      isArmed = int(data[21]);
+      flightMode = int(data[22]);
       
       for (int i=min(historyCount, updateCount)-1; i>0; i--){
         pitchHistory[i] = pitchHistory[i-1];
         rollHistory[i] = rollHistory[i-1];
         headingHistory[i] = headingHistory[i-1];
+        altitudeHistory[i] = altitudeHistory[i-1];
       }
+      
+      updateCount++;
       
       pitchHistory[0] = pitch;
       rollHistory[0] = roll;
       headingHistory[0] = heading;
+      altitudeHistory[0] = altitude;
       
       output.println(new String(serialInArray, 0, serialCount));
       
-      myPort.write('S');
-      //myPort.write('X');
-    }
-    else if (readMode == 0 && data.length == 17){
-      // This is 'S': all flight data
+      if (updateCount % 100 == 0) println(new String(serialInArray, 0, serialCount));
       
-      deltaTime = int(data[0]);
-      
-      /*gRoll = data[1];
-      gPitch = data[2];
-      gYaw = data[3];
-      
-      aRoll = data[4];
-      aPitch = data[5];
-      aYaw = data[6];*/
-      
-      voltage = data[7];
-      
-      for (int i=0; i<ENGINE_COUNT; i++){
-        engineSpeeds[i] = int(data[8+i]);
-      }
-      
-      isArmed = int(data[12]);
-      flightMode = int(data[13]);
-      
-      heading = data[14];
-      
-      altitude = data[15];
-      altHold = int(data[16]);
-      
-      output.println(new String(serialInArray, 0, serialCount));
-      
-      myPort.write('Q');
-      //myPort.write('X');
+      //p.write('X');
     }
     else if (readMode == 1 && data.length == 13){
       // This is 'F', reading PIDs
@@ -538,17 +556,16 @@ void serialEvent(Serial myPort){
       gyroPitchPID[1] = data[10];
       gyroPitchPID[2] = data[11];
       
-      windupGuard = data[11];
+      windupGuard = data[12];
       
       readMode = 0;
-      myPort.write('Q');
-      //myPort.write('X');
+      p.write('&');
+      
+      //p.write('X');
     }
     
-    updateCount++;
-    serialCount = 0;
-    
     lastData = millis();
+    serialCount = 0;
   }
 }
 
@@ -557,7 +574,7 @@ void keyReleased(){
     if (keyCode == UP){
       if (systemMode == 0){
         int tmp = throttle+10;
-        myPort.write("$"+tmp+";Q");
+        myPort.write("$"+tmp+";&");
       }
       else{
         levelRollPID[0] += 0.5;
@@ -568,7 +585,7 @@ void keyReleased(){
     else if (keyCode == DOWN){
       if (systemMode == 0){
         int tmp = throttle-10;
-        myPort.write("$"+tmp+";Q");
+        myPort.write("$"+tmp+";&");
       }
       else{
         levelRollPID[0] -= 0.5;
@@ -620,7 +637,7 @@ void sendNewThrottle(){
   String tmp = new String(newThrottle, 0, throttleIndex);
   myPort.write("X");
   myPort.clear();
-  myPort.write("$"+tmp+";Q");
+  myPort.write("$"+tmp+";&");
   modifyingThrottle = false;
 }
 
@@ -635,13 +652,13 @@ void sendArm(){
 void sendMode(int mode){
   myPort.write("X");
   myPort.clear();
-  myPort.write("S"+mode+";Q");
+  myPort.write("s"+mode+";&");
 }
 
 void sendAltHold(int mode){
   myPort.write("X");
   myPort.clear();
-  myPort.write("S"+mode+";Q");
+  myPort.write("S"+mode+";&");
 }
 
 void sendRollPitchPID(){
@@ -652,5 +669,5 @@ void sendRollPitchPID(){
   for (int i=0; i<3; i++) myPort.write(levelRollPID[i]+";");
   for (int i=0; i<3; i++) myPort.write(levelPitchPID[i]+";");
   
-  myPort.write("Q");
+  myPort.write("&");
 }
